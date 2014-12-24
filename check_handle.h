@@ -1,4 +1,9 @@
 NEO_NAMESPACE_BEGIN
+/*
+ *The code below does not work yet
+ *
+ */
+
 class Checkhandle :public base::Handle {
         public:
         Checkhandle(const Loop &loop);
