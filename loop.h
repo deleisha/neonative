@@ -22,6 +22,7 @@ class Loop {
     ~Loop() {
         if(!is_default_loop_ && loop_) {
             int r = uv_loop_close(loop_);
+            r = r;
             delete loop_;
             loop_ = nullptr;
         }

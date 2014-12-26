@@ -1,6 +1,7 @@
 #include<iostream>
 #include<cassert>
 #include<uv.h>
+#include<unistd.h>
 #include "macros.h"
 #include "loop.h"
 
@@ -39,59 +40,34 @@ class TCP {
 
 class TCPClient : public TCP {
     public:
-        TCPClient(const Loop &lp):TCP(lp) {}
+        explicit TCPClient(const Loop &lp):TCP(lp) {}
 };
 
-
-void echo_write(uv_write_t *req, int status) {
-    if (status < 0 ) {
-        fprintf(stderr, "Write error %s\n", uv_strerror(status));
-    }
-    char *base = (char*) req->data;
-    free(base);
-    free(req);
+void on_close(uv_handle_t* handle) {
+    free(handle);
+    handle = 0;
+    fprintf(stderr, "disconnected\n");
 }
 
 
-void read_cb(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
-    if (nread < 0 ) {
-        if (nread != UV_EOF)
-            fprintf(stderr, "Read error %s\n", uv_strerror(nread));
-        uv_close(reinterpret_cast<uv_handle_t*>(client), NULL);
-        return;
-    }
-
-    uv_write_t *req = (uv_write_t *) malloc(sizeof(*req));
-    req->data = (void*) buf->base;
-    asm("int $5");
-    uv_write(req, client, buf, 1, echo_write);
-}
-
-
-
-void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-        buf->base = (char*)malloc(suggested_size);
-        buf->len = suggested_size;
-}
-
-
-
-class  TCPServer :public TCP{
+class  TCPServer :public TCP
+{
         public:
-            TCPServer(const Loop lp):TCP(lp){}
+            TCPServer(const Loop &lp):TCP(lp)
+            {}
 
+        //listen for connections
         int listen(const sockaddr* addr, unsigned int flags) {
             neo_bind(addr, flags);
             return _listen(128, connection_cb);
         }
 
+        bool bind(const sockaddr* addr, unsigned flags) {
+            return neo_bind(addr, flags) == 0;
+        }
+
+        //Read from the given client
         int read( const TCPClient &client) {
-            //int uv_read_start(
-                 //      uv_stream_t*,
-                //       uv_alloc_cb alloc_cb,
-                //       uv_read_cb read_cb
-              //    );
-        
             return 0;
         }
 
@@ -102,26 +78,58 @@ class  TCPServer :public TCP{
             if(r) {
                 std::cerr << uv_strerror(r) << std::endl;
             }
-            return r;
+            return !!r;
         }
         //listen for connection
         int _listen(int backlog, uv_connection_cb cb) {
             return uv_listen(reinterpret_cast<uv_stream_t*>(tcp_), backlog, cb);
         }
 
-        static void connection_cb(uv_stream_t* stream, int status) {
+        static void connection_cb(uv_stream_t* server_handle, int status) {
             if ( status ) {
                 return;
             }
+
             //Create client socket now
-            TCPClient client(reinterpret_cast<uv_handle_t*>(stream)->loop);
-            if (uv_accept(stream, (uv_stream_t*) client.get()) == 0) {
-                uv_read_start((uv_stream_t*) client.get(), alloc_buffer, read_cb);
+            TCPClient *client = new TCPClient(server_handle->loop);
+            uv_tcp_init(server_handle->loop, client->get());
+
+            if (uv_accept(server_handle, reinterpret_cast<uv_stream_t*>(client->get())) == 0) {
+                uv_read_start((uv_stream_t*) client->get(), alloc_cb, read_cb);
             }
             else
             {
-                uv_close((uv_handle_t*) client.get(), NULL);
+                uv_close((uv_handle_t*) client->get(), on_close);
             }
+        }
+
+        static void alloc_cb(
+            uv_handle_t *handle,
+            size_t suggested_size,
+            uv_buf_t *buf) 
+        {
+            buf->base = (char*)malloc(suggested_size);
+            buf->len = suggested_size;
+        }
+
+
+
+        static void read_cb(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf)
+        {
+            if (nread < 0 ) {
+                if (nread == UV_EOF)
+                {
+                    uv_close(reinterpret_cast<uv_handle_t*>(client), on_close);
+                }
+                else {
+                    fprintf(stderr, "Read Error  %s\n", uv_strerror(nread));
+                }
+            }
+            else {
+                write(1, buf->base, nread);
+            }
+
+            free(buf->base);
         }
 };
 
@@ -148,6 +156,7 @@ NEO_NAMESPACE_END
 
 
 using namespace neonative;
+using namespace std;
 int main()
 {
     Loop loop;
