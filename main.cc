@@ -14,11 +14,13 @@ NEO_NAMESPACE_BEGIN
   as libuv already has subclassed it. 
   By subclassing it here we will have multiple copies of uv_handle, and
   uv_stream and also, many of the api's being exposed by libuv are not exposed
-  here. it only exposes ONLY those parts which are used in neovim.
+  here. it only exposes ONLY those parts which are used in neonative.
 
   But this is does not mean that we can not exposed it. Any interested parties
   can add those functionality.
  */
+
+namespace net {
 class TCP {
     public:
         TCP(const Loop &loop):tcp_(new uv_tcp_t)
@@ -57,9 +59,17 @@ class  TCPServer :public TCP
             {}
 
         //listen for connections
-        int listen(const sockaddr* addr, unsigned int flags) {
-            neo_bind(addr, flags);
+        int listen(const sockaddr* addr, callback) {
+            neo_bind(addr, 0);
             return _listen(128, connection_cb);
+        }
+
+        int listen(std::string host, unsigned port, int backlog, callback)
+        {
+        }
+
+        int close( callback)
+        {
         }
 
         bool bind(const sockaddr* addr, unsigned flags) {
@@ -138,7 +148,7 @@ enum Type { CLIENT = 0 ,SERVER };
 
 class TCPFactory {
     public:
-    static TCP *create(const Loop &lp, Type tp) {
+    TCP *create(const Loop &lp, Type tp) {
         switch(tp) {
             case CLIENT:
                 return new TCPClient(lp);
@@ -150,6 +160,12 @@ class TCPFactory {
     }
 };
 
+TCPServer* createServer(const Loop &lp) {
+    return new TCPServer(lp);
+}
+
+}
+
 
 
 NEO_NAMESPACE_END
@@ -160,14 +176,16 @@ using namespace std;
 int main()
 {
     Loop loop;
-    TCPServer server(loop);
+
+    net::TCPServer *server = net::createServer(loop);
     struct sockaddr_in bind_addr;
     int r = uv_ip4_addr("0.0.0.0", 6000, &bind_addr);
     assert(!r);
-    r = server.listen((struct sockaddr*)&bind_addr, 0);
+    r = server->listen((struct sockaddr*)&bind_addr, 0);
     if (r) {
         std::cout << uv_strerror(r) << std::endl;
     }
     uv_run(loop.get(), UV_RUN_DEFAULT);
+
     return 0;
 }
