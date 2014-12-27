@@ -13,6 +13,7 @@ class Idle : public Handle {
     bool is_cb_set() const { return idle_cb_ != 0;}
 
 
+    //Need to check callback handling
     void set_cb(uv_idle_cb callback) {
         if( !is_cb_set()) {
             idle_cb_ =  callback;
@@ -37,7 +38,7 @@ Idle::~Idle() {
     idle_cb_  = 0;
 }
 bool Idle::is_active() const {
-        return !!uv_is_active(reinterpret_cast<uv_handle_t*>(idle_handle_));
+    return !!uv_is_active(reinterpret_cast<uv_handle_t*>(idle_handle_));
 }
 
 
