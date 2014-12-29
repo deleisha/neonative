@@ -1,7 +1,8 @@
 #ifndef __NEO_TCP_HANDLE__
 #define __NEO_TCP_HANDLE__
-#include<uv.h>
 #include "macros.h"
+#include<uv.h>
+#include<cstring>
 
 
 NEO_NAMESPACE_BEGIN
@@ -144,8 +145,13 @@ class  TCPServer :public TCP
                     fprintf(stderr, "Read Error  %s\n", uv_strerror(nread));
                 }
             }
-            else {
-                write(1, buf->base, nread);
+            else { //Write result back
+                uv_write_t req;
+                memset(&req, 0, sizeof(req));
+                int r = uv_write(&req, client, buf, 1, NULL);
+                if(r) {
+                    std::cerr << "Error: " << uv_strerror(r) << std::endl;
+                }
             }
 
             free(buf->base);
