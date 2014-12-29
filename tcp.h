@@ -44,8 +44,6 @@ class TCPClient : public TCP {
         explicit TCPClient(const Loop &lp):TCP(lp) {}
 };
 
-
-
 class  TCPServer :public TCP
 {
         public:
@@ -65,19 +63,15 @@ class  TCPServer :public TCP
             int r = uv_ip4_addr(host.c_str(), port, &bind_addr);
             assert(!r);
             
-            if(bind((struct sockaddr*) &bind_addr, 0)) {
+            if( !_bind((struct sockaddr*) &bind_addr, 0))
+            {
                 //listen here
-                uv_connection_cb cb = connection_cb;
+                uv_connection_cb cb = handle_conn;
                 r = uv_listen(reinterpret_cast<uv_stream_t*>(tcp_), backlog, cb);
                 if(r) {
-                    std::cout << "listen: " << uv_strerror(r) << std::endl;
+                    std::cerr << "listen: " << uv_strerror(r) << std::endl;
                 }
             }
-            else
-            {
-                //handle error here
-            }
-            callback("neonative");
             return  r;
 
         }
@@ -86,10 +80,6 @@ class  TCPServer :public TCP
         int close( )
         {
             return  0;
-        }
-
-        bool bind(const sockaddr* addr, unsigned flags) {
-            return _bind(addr, flags) == 0;
         }
 
         protected:
@@ -105,22 +95,24 @@ class  TCPServer :public TCP
             return uv_listen(reinterpret_cast<uv_stream_t*>(tcp_), backlog, cb);
         }
 
-        static void connection_cb(uv_stream_t* server_handle, int status) {
-            if ( status ) {
+        static void handle_conn(uv_stream_t* server_handle, int status)
+        {
+            if ( status )
+            {
                 return;
             }
 
-            //Create client socket now
-            TCPClient *client = new TCPClient(server_handle->loop);
-            uv_tcp_init(server_handle->loop, client->get());
+            uv_tcp_t *client = new uv_tcp_t;
+            uv_tcp_init(server_handle->loop, client);
 
-            if (uv_accept(server_handle, reinterpret_cast<uv_stream_t*>(client->get())) == 0) {
-                uv_read_start((uv_stream_t*) client->get(), alloc_cb, read_cb);
+            int r = uv_accept(server_handle, reinterpret_cast<uv_stream_t*>(client));
+            if(r) {
+                std::cerr << "accept: " << uv_strerror(r) << std::endl;
+                uv_close((uv_handle_t*) client, on_close);
+                return;
             }
-            else
-            {
-                uv_close((uv_handle_t*) client->get(), on_close);
-            }
+            //Read the request
+            uv_read_start((uv_stream_t*) client, alloc_cb, read_cb);
         }
 
         static void alloc_cb(
@@ -132,8 +124,6 @@ class  TCPServer :public TCP
             buf->len = suggested_size;
         }
 
-
-
         static void read_cb(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf)
         {
             if (nread < 0 ) {
@@ -142,13 +132,13 @@ class  TCPServer :public TCP
                     uv_close(reinterpret_cast<uv_handle_t*>(client), on_close);
                 }
                 else {
-                    fprintf(stderr, "Read Error  %s\n", uv_strerror(nread));
+                    std::cerr << "Read Error: " << uv_strerror(nread) << std::endl;
                 }
             }
             else { //Write result back
                 uv_write_t req;
                 memset(&req, 0, sizeof(req));
-                int r = uv_write(&req, client, buf, 1, NULL);
+                int r = uv_write(&req, client, &buf, 1, NULL);
                 if(r) {
                     std::cerr << "Error: " << uv_strerror(r) << std::endl;
                 }
@@ -159,11 +149,10 @@ class  TCPServer :public TCP
 
         //call back for uv_close
         static void on_close(uv_handle_t* handle) {
-            free(handle);
+            delete(handle);
             handle = 0;
             fprintf(stderr, "disconnected\n");
         }
-
 };
 
 
